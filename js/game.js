@@ -15,6 +15,7 @@ import { buildVacuum, animateVacuum, BRAND_PALETTE } from "./vacuum.js";
 import {
   PowerupPickup, Bullet, Mine, POWERUP_KINDS, powerupMeta,
 } from "./powerups.js";
+import { spawnDamageBurst } from "./effects.js";
 
 const VAC_RADIUS = 0.55;
 const BASE_SPEED = 5.4;
@@ -202,6 +203,7 @@ export class Game {
           p.stunned = 2.0;
           p.score = Math.max(0, p.score - 25);
           this.emit("player-stunned", { player: p, pet });
+          spawnDamageBurst(this.world, p.position.x, p.position.z, p.color);
           // Knockback
           const dx = p.position.x - pet.mesh.position.x;
           const dz = p.position.z - pet.mesh.position.z;
@@ -245,17 +247,42 @@ export class Game {
     }
     this.bullets = this.bullets.filter((b) => b.alive);
 
-    // Mines.
+    // Mines. Mines are lethal to anyone — including the player who dropped
+    // them — once their (longer) self-arming delay expires. Pets and other
+    // players trigger after the short normal arming delay.
     for (const m of this.mines) {
       m.update(dt);
       if (!m.alive) continue;
-      for (const target of [...this.pets, ...playerList]) {
-        const pos = target.mesh ? { x: target.mesh.position.x, z: target.mesh.position.z } : target.position;
-        if (target.id === m.ownerId) continue;
-        if (m.triggers(pos)) {
-          const killed = m.detonate(this.world, this.pets, playerList);
-          for (const k of killed) this._creditPetKill(m.ownerId);
-          break;
+      let triggered = null;
+      for (const target of this.pets) {
+        if (!target.alive) continue;
+        const pos = { x: target.mesh.position.x, z: target.mesh.position.z };
+        if (m.triggers(pos)) { triggered = target; break; }
+      }
+      if (!triggered) {
+        for (const target of playerList) {
+          if (!target.active || target.stunned > 0) continue;
+          if (target.id === m.ownerId) {
+            if (m.triggers(target.position, true)) { triggered = target; break; }
+          } else {
+            if (m.triggers(target.position)) { triggered = target; break; }
+          }
+        }
+      }
+      if (triggered) {
+        const killed = m.detonate(this.world, this.pets, playerList);
+        for (const _ of killed) this._creditPetKill(m.ownerId);
+        this.emit("explosion", { x: m.mesh.position.x, z: m.mesh.position.z, kind: m.kind });
+        // Stun any player caught — including the owner.
+        for (const p of playerList) {
+          const dx = p.position.x - m.mesh.position.x;
+          const dz = p.position.z - m.mesh.position.z;
+          if (dx * dx + dz * dz <= m.radius * m.radius) {
+            p.stunned = Math.max(p.stunned || 0, p.id === m.ownerId ? 1.6 : 1.2);
+            p.score = Math.max(0, p.score - (p.id === m.ownerId ? 30 : 20));
+            this.emit("player-stunned", { player: p, mine: true });
+            spawnDamageBurst(this.world, p.position.x, p.position.z, p.color);
+          }
         }
       }
     }
@@ -279,6 +306,7 @@ export class Game {
         p.score += points;
         this.dirtCleared += got;
         collectedSinceLast += got;
+        if (p.isLocal) this.emit("dirt-collected", { count: got });
       }
     }
     if (collectedSinceLast > 0) this.emit("score-changed");
@@ -319,7 +347,12 @@ export class Game {
     }
 
     // Camera follows local player.
-    if (local) this.engine.setFollow(local.position);
+    if (local) {
+      this.engine.setFollow(local.position, local.rotation);
+      // Hide the local vacuum's body in first-person (would obscure the view).
+      const fp = this.engine.cameraMode === "first";
+      local.mesh.visible = !fp;
+    }
   }
 
   _applyInput(p, dt, axis) {
@@ -340,6 +373,30 @@ export class Game {
 
     let vx = axis.x * speed;
     let vz = axis.y * speed;
+    // In third-person / first-person, W/A/S/D are camera-relative: W is
+    // "where the camera looks", A/D strafe. Mouse rotates the camera, and
+    // the bot's facing snaps to follow the camera yaw.
+    if (p.isLocal && this.engine.cameraMode !== "topdown") {
+      const yaw = (this.engine.cameraMode === "third"
+        ? p.facing + this.engine.mouseYaw
+        : p.facing + this.engine.mouseYaw);
+      const fwd = -axis.y;
+      const rht =  axis.x;
+      // Camera-forward in world XZ: when bot facing matches "forward camera"
+      // — for first-person camera looks in facing direction (sin, cos);
+      // for third-person camera is BEHIND so the look direction it shows
+      // equals the bot facing too.
+      const fx =  Math.sin(yaw);
+      const fz =  Math.cos(yaw);
+      const rx =  Math.cos(yaw);
+      const rz = -Math.sin(yaw);
+      vx = (fwd * fx + rht * rx) * speed;
+      vz = (fwd * fz + rht * rz) * speed;
+      // Snap bot facing to camera yaw so further mouse rotation keeps the
+      // input consistent.
+      p.facing = yaw;
+      this.engine.mouseYaw = 0;
+    }
     // Convert screen-space input (y is down) to world-space (z is depth into screen).
     const dx = vx * dt;
     const dz = vz * dt;
@@ -419,11 +476,13 @@ export class Game {
       const x = p.position.x + Math.sin(p.rotation) * back * 0.7;
       const z = p.position.z + Math.cos(p.rotation) * back * 0.7;
       this.mines.push(new Mine(this.world, x, z, p.id, kind));
+      this.emit("mine-dropped", { player: p, kind });
     }
     this.emit("powerup-used", { player: p, kind });
   }
 
   _spawnTurretShot(p) {
+    this.emit("turret-fired", { player: p });
     // Find nearest pet.
     let nearest = null; let nearestD = 9999;
     for (const pet of this.pets) {
@@ -563,7 +622,11 @@ export class Game {
     }
     // Local camera follow.
     const local = this.players.get(this.localPlayerId);
-    if (local) this.engine.setFollow(local.position);
+    if (local) {
+      this.engine.setFollow(local.position, local.rotation);
+      const fp = this.engine.cameraMode === "first";
+      local.mesh.visible = !fp;
+    }
     this.world?.update(0.016, this.elapsed);
   }
 

@@ -243,15 +243,26 @@ export class World {
       emissiveIntensity: 0.7,
       roughness: 0.4,
     });
-    const furnMat = new THREE.MeshStandardMaterial({
-      color: 0x33334a,
-      roughness: 0.5,
-      metalness: 0.2,
+    // Per-room furniture palette so each room reads as a different space.
+    const FURN = {
+      wood:     { base: 0x6b4a2e, top: 0xa68250, topRoughness: 0.8 },   // living
+      tile:     { base: 0xe6e6ec, top: 0xfff8e8, topRoughness: 0.4 },   // kitchen
+      carpet:   { base: 0x3a2a4a, top: 0x6f4d8a, topRoughness: 0.95 },  // bedroom
+      concrete: { base: 0x3a3a40, top: 0x4a4a52, topRoughness: 0.7 },   // garage
+      dock:     { base: 0x1a2a28, top: 0x2a4a44, topRoughness: 0.5 },   // dock
+    };
+    const furn = FURN[this.level.floor] ?? FURN.wood;
+    const furnBaseMat = new THREE.MeshStandardMaterial({
+      color: furn.base, roughness: 0.55, metalness: 0.15,
+    });
+    const furnTopMat = new THREE.MeshStandardMaterial({
+      color: furn.top, roughness: furn.topRoughness, metalness: 0.05,
     });
 
     const wallGeo = new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT, CELL_SIZE);
     const trimGeo = new THREE.BoxGeometry(CELL_SIZE * 1.02, 0.05, CELL_SIZE * 1.02);
-    const furnGeo = new THREE.BoxGeometry(CELL_SIZE * 0.94, FURN_HEIGHT, CELL_SIZE * 0.94);
+    const furnBaseGeo = new THREE.BoxGeometry(CELL_SIZE * 0.94, FURN_HEIGHT * 0.7, CELL_SIZE * 0.94);
+    const furnTopGeo = new THREE.BoxGeometry(CELL_SIZE * 0.96, FURN_HEIGHT * 0.18, CELL_SIZE * 0.96);
 
     for (let r = 0; r < this.rows; r++) {
       const row = this.cells[r];
@@ -276,11 +287,18 @@ export class World {
             break;
           }
           case "+": {
-            const f = new THREE.Mesh(furnGeo, furnMat);
-            f.position.set(w.x, FURN_HEIGHT / 2, w.z);
-            f.castShadow = true;
-            f.receiveShadow = true;
+            // Two-tier furniture: a wood/metal base + a softer cushion or
+            // counter top. Reads as a sofa segment / counter / bed-piece /
+            // shelf depending on the room's palette.
+            const baseHeight = FURN_HEIGHT * 0.7;
+            const f = new THREE.Mesh(furnBaseGeo, furnBaseMat);
+            f.position.set(w.x, baseHeight / 2, w.z);
+            f.castShadow = true; f.receiveShadow = true;
             this.group.add(f);
+            const top = new THREE.Mesh(furnTopGeo, furnTopMat);
+            top.position.set(w.x, baseHeight + (FURN_HEIGHT * 0.18) / 2 + 0.005, w.z);
+            top.castShadow = true; top.receiveShadow = true;
+            this.group.add(top);
             this.grid[r][c] = 2;
             break;
           }
@@ -340,6 +358,10 @@ export class World {
     if (this.level.isFinal) {
       this._buildDock();
     }
+
+    // Decorative props: a ceiling lamp casting a warm pool of light, plus a
+    // potted plant or two in the corners. Don't block movement.
+    this._buildAmbientProps();
 
     // Always spawn at least one player spawn.
     if (this.spawns.length === 0) {
@@ -402,6 +424,94 @@ export class World {
     const light = new THREE.PointLight(0x00ffc6, 1.5, 14, 2);
     light.position.set(cx, 4, cz);
     this.group.add(light);
+  }
+
+  _buildAmbientProps() {
+    const cx = this.originX + (this.cols * CELL_SIZE) / 2;
+    const cz = this.originZ + (this.rows * CELL_SIZE) / 2;
+    // Ceiling lamp above the room — a small pendant + warm point light.
+    if (!this.level.isFinal) {
+      const cord = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.012, 0.012, 1.2, 6),
+        new THREE.MeshStandardMaterial({ color: 0x101014 })
+      );
+      cord.position.set(cx, 3.0, cz);
+      this.group.add(cord);
+      const shade = new THREE.Mesh(
+        new THREE.ConeGeometry(0.28, 0.3, 24, 1, true),
+        new THREE.MeshStandardMaterial({
+          color: 0x2a2a36, side: THREE.DoubleSide,
+          roughness: 0.4, metalness: 0.6,
+        })
+      );
+      shade.position.set(cx, 2.4, cz);
+      this.group.add(shade);
+      const bulb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.07, 16, 12),
+        new THREE.MeshStandardMaterial({
+          color: 0x000000, emissive: 0xffd9a8, emissiveIntensity: 1.6,
+        })
+      );
+      bulb.position.set(cx, 2.32, cz);
+      this.group.add(bulb);
+      const lamp = new THREE.PointLight(0xffd9a8, 1.4, 16, 2.0);
+      lamp.position.set(cx, 2.3, cz);
+      this.group.add(lamp);
+    }
+
+    // Find a few empty floor cells near the corners and drop a plant there.
+    const plantCount = this.level.isFinal ? 0 : 2;
+    const corners = [
+      { c: 2, r: 2 },
+      { c: this.cols - 3, r: 2 },
+      { c: 2, r: this.rows - 3 },
+      { c: this.cols - 3, r: this.rows - 3 },
+    ];
+    let placed = 0;
+    for (const corner of corners) {
+      if (placed >= plantCount) break;
+      if (this.grid[corner.r] && this.grid[corner.r][corner.c] === 0) {
+        const w = this.cellToWorld(corner.c, corner.r);
+        this._spawnPlant(w.x, w.z);
+        placed++;
+      }
+    }
+  }
+
+  _spawnPlant(x, z) {
+    const g = new THREE.Group();
+    const pot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.16, 0.18, 16),
+      new THREE.MeshStandardMaterial({ color: 0x8a4a20, roughness: 0.7 })
+    );
+    pot.position.y = 0.09;
+    pot.castShadow = true; pot.receiveShadow = true;
+    g.add(pot);
+    // A few leafy cones forming foliage.
+    const leafMat = new THREE.MeshStandardMaterial({
+      color: 0x3a8a4a, roughness: 0.6,
+    });
+    for (let i = 0; i < 6; i++) {
+      const leaf = new THREE.Mesh(
+        new THREE.ConeGeometry(0.07, 0.34, 6),
+        leafMat
+      );
+      const ang = (i / 6) * Math.PI * 2;
+      leaf.position.set(Math.cos(ang) * 0.06, 0.36, Math.sin(ang) * 0.06);
+      leaf.rotation.z = Math.cos(ang) * 0.4;
+      leaf.rotation.x = Math.sin(ang) * 0.4;
+      leaf.castShadow = true;
+      g.add(leaf);
+    }
+    g.position.set(x, 0, z);
+    // remove dirt that would otherwise be underneath
+    this.dirt = this.dirt.filter((d) => {
+      const dx = d.mesh.position.x - x;
+      const dz = d.mesh.position.z - z;
+      if (dx * dx + dz * dz < 0.36) { d.alive = false; d.mesh.visible = false; return false; }
+      return true;
+    });
+    this.group.add(g);
   }
 
   isPassable(c, r) {

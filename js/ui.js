@@ -264,8 +264,25 @@ export class UI {
     }
   }
 
-  bindHUD({ onLeave }) {
+  bindHUD({ onLeave, onCameraToggle, onSoundToggle }) {
     $("hud-leave").onclick = onLeave;
+    $("hud-camera").onclick = onCameraToggle;
+    $("hud-sound").onclick = onSoundToggle;
+  }
+
+  setCameraLabel(mode) {
+    const icon = $("hud-camera-icon");
+    if (!icon) return;
+    if (mode === "topdown") icon.textContent = "▦";
+    else if (mode === "third") icon.textContent = "◗";
+    else if (mode === "first") icon.textContent = "👁";
+    icon.parentElement.title = `Camera: ${mode} (V to cycle)`;
+  }
+  setSoundLabel(on) {
+    const icon = $("hud-sound-icon");
+    if (!icon) return;
+    icon.textContent = on ? "♪" : "✕";
+    icon.parentElement.classList.toggle("hud__icon--active", !!on);
   }
 
   // ---------- Pause ----------
@@ -403,7 +420,9 @@ function setupGarageScene(canvas) {
   function setColor(color) {
     state.color = color;
     if (vacuum) {
-      vacuum.userData.ring.material.emissive.setHex(color);
+      // The new LED is a basic-material ring + glow; just swap their colour.
+      if (vacuum.userData.led)  vacuum.userData.led.material.color.setHex(color);
+      if (vacuum.userData.glow) vacuum.userData.glow.material.color.setHex(color);
       vacuum.userData.color = color;
     }
   }

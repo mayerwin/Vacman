@@ -8,6 +8,8 @@ import { Input } from "./input.js";
 import { Game } from "./game.js";
 import { Net } from "./multiplayer.js";
 import { buildVacuum, animateVacuum, BRAND_PALETTE, PLAYER_COLORS } from "./vacuum.js";
+import { sound } from "./audio.js";
+import { screenFlash } from "./effects.js";
 
 const canvas = document.getElementById("game-canvas");
 const engine = new Engine(canvas);
@@ -23,6 +25,16 @@ let paused = false;
 // Touch detection for mobile joystick.
 const isTouch = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
 if (isTouch) input.showTouch();
+
+// Audio context can only resume after a user gesture. Wire it to the first
+// click anywhere on the page.
+const unlockAudio = () => {
+  sound.unlock();
+  window.removeEventListener("pointerdown", unlockAudio);
+  window.removeEventListener("keydown", unlockAudio);
+};
+window.addEventListener("pointerdown", unlockAudio);
+window.addEventListener("keydown", unlockAudio);
 
 let game = null;
 let mode = "solo";  // "solo" | "coop" | "versus"
@@ -223,7 +235,13 @@ function startGame({ levelIndex = 0, players = null, asGuest = false } = {}) {
   ui.showHUD();
 
   // Wire HUD controls.
-  ui.bindHUD({ onLeave: () => leaveGame(true) });
+  ui.bindHUD({
+    onLeave: () => leaveGame(true),
+    onCameraToggle: cycleCamera,
+    onSoundToggle: toggleSound,
+  });
+  ui.setCameraLabel(engine.cameraMode);
+  ui.setSoundLabel(sound.enabled);
   ui.bindPause({
     onResume: () => { ui.hideAll(); ui.showHUD(); paused = false; },
     onLeave:  () => leaveGame(true),
@@ -246,6 +264,7 @@ function startGame({ levelIndex = 0, players = null, asGuest = false } = {}) {
   game.on("score-changed", refreshHUD);
   game.on("level-changed", refreshHUD);
   game.on("level-cleared", ({ reachedBy, time }) => {
+    sound.win();
     if (role !== "guest") {
       const payload = computeResultsPayload(reachedBy, time);
       const isFinal = game.levelIndex >= 5;
@@ -254,14 +273,25 @@ function startGame({ levelIndex = 0, players = null, asGuest = false } = {}) {
     }
   });
   game.on("powerup-collected", ({ player, kind }) => {
+    sound.pickup();
     if (player.isLocal) ui.toast(`Picked up ${kind.toUpperCase()}`, "good");
   });
   game.on("door-open", ({ level }) => {
+    sound.doorOpen();
     ui.toast(`Door unlocked — head for the dock!`, "good");
   });
-  game.on("player-stunned", ({ player }) => {
-    if (player.isLocal) ui.toast("Ow! Stunned for 2s", "bad");
+  game.on("player-stunned", ({ player, mine }) => {
+    sound.hurt();
+    if (player.isLocal) {
+      screenFlash("#ff3d8b", 0.45, 0.4);
+      ui.toast(mine ? "Boom! Mine got you" : "Ow! Stunned for 2s", "bad");
+    }
   });
+  game.on("dirt-collected", () => sound.collect());
+  game.on("explosion", () => sound.explode());
+  game.on("mine-dropped", () => sound.mineDrop());
+  game.on("turret-fired", () => sound.turretShot());
+  game.on("pet-cry", ({ kind }) => sound.petCry(kind));
 
   // If host, push snapshots periodically.
   if (role === "host") {
@@ -337,7 +367,40 @@ function refreshHUD() {
   });
 }
 
+// ---------- Settings: camera mode + sound ----------
+
+const CAMERA_CYCLE = ["topdown", "third", "first"];
+function cycleCamera() {
+  const i = CAMERA_CYCLE.indexOf(engine.cameraMode);
+  const next = CAMERA_CYCLE[(i + 1) % CAMERA_CYCLE.length];
+  engine.setCameraMode(next);
+  ui.setCameraLabel(next);
+  try { localStorage.setItem("vacman:camera", next); } catch (_) {}
+  ui.toast(`Camera: ${next}`, "good");
+}
+function toggleSound() {
+  sound.unlock();
+  sound.setEnabled(!sound.enabled);
+  ui.setSoundLabel(sound.enabled);
+  try { localStorage.setItem("vacman:sound", sound.enabled ? "1" : "0"); } catch (_) {}
+}
+// Restore prefs.
+try {
+  const cam = localStorage.getItem("vacman:camera");
+  if (cam) engine.setCameraMode(cam);
+  const snd = localStorage.getItem("vacman:sound");
+  if (snd === "0") sound.setEnabled(false);
+} catch (_) {}
+
+// Keyboard shortcuts.
+window.addEventListener("keydown", (e) => {
+  if (e.key === "v" || e.key === "V") cycleCamera();
+  else if (e.key === "m" || e.key === "M") toggleSound();
+});
+
 // ---------- Game loop integration ----------
+
+let petCryAccum = 0;
 
 engine.onFrame((dt) => {
   if (game && !paused) {
@@ -348,9 +411,26 @@ engine.onFrame((dt) => {
       game.update(dt, input);
     }
     refreshHUD();
+
+    // Drive engine drone from local input magnitude.
+    const a = input.read();
+    sound.setEngineSpeed(Math.hypot(a.x, a.y));
+
+    // Random ambient pet cries (every 4-9s).
+    petCryAccum += dt;
+    if (petCryAccum > 4 + Math.random() * 5) {
+      petCryAccum = 0;
+      const pets = game.pets?.filter((p) => p.alive) || [];
+      if (pets.length) {
+        const p = pets[Math.floor(Math.random() * pets.length)];
+        sound.petCry(p.kind);
+      }
+    }
   } else if (titleScene) {
     titleSceneTick(dt);
+    sound.setEngineSpeed(0);
   }
+  sound.tick(dt);
 
   if (input.consumePause() && game && !paused) {
     paused = true;

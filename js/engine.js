@@ -42,11 +42,15 @@ export class Engine {
     this.scene.background = new THREE.Color(0x05050a);
     this.scene.fog = new THREE.FogExp2(0x05050a, 0.022);
 
-    // Perspective chase camera tuned for an arcade top-down feel. resize()
-    // re-tunes the offset for portrait/landscape.
-    this.camera = new THREE.PerspectiveCamera(48, 1, 0.1, 200);
+    // Perspective camera. Three modes are supported, switched via
+    // setCameraMode(): "topdown" (the default arcade view), "third" (chase
+    // camera behind the bot, FPS-style), "first" (mounted on the bot).
+    this.camera = new THREE.PerspectiveCamera(60, 1, 0.05, 200);
     this.camera.position.set(0, 16, 11);
     this.camera.lookAt(0, 0, 0);
+    this.cameraMode = "topdown";
+    this.mouseYaw = 0;     // additional rotation from mouse drag (radians)
+    this.mousePitch = 0;
 
     // Lighting rig: warm key + cool fill + neon accents.
     this.ambient = new THREE.AmbientLight(0x37274a, 0.95);
@@ -72,10 +76,14 @@ export class Engine {
     this.rim = new THREE.HemisphereLight(0xb6e4ff, 0x140820, 0.25);
     this.scene.add(this.rim);
 
-    // Camera follow target.
+    // Camera follow target = local player world position. The follow
+    // entity (a Player object) supplies extra info — facing rotation — so
+    // chase/first-person cams orient correctly.
     this.followTarget = new THREE.Vector3();
+    this.followFacing = 0;
     this.cameraOffset = new THREE.Vector3(0, 14, 9);
-    this.cameraTilt = 0.78; // 0 = top-down, 1 = chase
+
+    this._wireMouseLook();
 
     this.callbacks = [];
     this.last = performance.now();
@@ -109,6 +117,67 @@ export class Engine {
   // any straggler call is harmless.)
   _refitCamera() {}
 
+  _updateCamera() {
+    const mode = this.cameraMode;
+    if (mode === "topdown") {
+      // Original arcade view, with optional mouse yaw/pitch overlay.
+      let tx = this.followTarget.x;
+      let tz = this.followTarget.z;
+      if (this.levelBounds) {
+        const margin = 5;
+        tx = Math.max(this.levelBounds.min.x + margin,
+              Math.min(this.levelBounds.max.x - margin, tx));
+        tz = Math.max(this.levelBounds.min.z + margin,
+              Math.min(this.levelBounds.max.z - margin, tz));
+      }
+      // Apply yaw rotation around target (mouse drag).
+      const sin = Math.sin(this.mouseYaw), cos = Math.cos(this.mouseYaw);
+      const ox = this.cameraOffset.x * cos - this.cameraOffset.z * sin;
+      const oz = this.cameraOffset.x * sin + this.cameraOffset.z * cos;
+      const heightBias = this.mousePitch * 6;
+      const desired = new THREE.Vector3(
+        tx + ox,
+        this.cameraOffset.y + heightBias,
+        tz + oz,
+      );
+      this.camera.position.lerp(desired, 0.12);
+      this.camera.lookAt(tx, 0.5, tz);
+    } else if (mode === "third") {
+      // Chase camera behind and slightly above the bot. Player faces
+      // the direction of motion; mouse can offset yaw/pitch.
+      const yaw = this.followFacing + this.mouseYaw + Math.PI; // behind bot
+      const pitch = 0.18 - this.mousePitch * 0.4;
+      const dist = 3.6;
+      const tx = this.followTarget.x;
+      const tz = this.followTarget.z;
+      const cy = 1.4 + Math.sin(pitch) * 1.4;
+      const cx = tx + Math.sin(yaw) * dist * Math.cos(pitch);
+      const cz = tz + Math.cos(yaw) * dist * Math.cos(pitch);
+      const desired = new THREE.Vector3(cx, cy, cz);
+      this.camera.position.lerp(desired, 0.22);
+      this.camera.lookAt(tx, 0.7, tz);
+    } else if (mode === "first") {
+      // First-person: camera at the sensor on top of the bot, looking in
+      // the bot's facing direction (with mouse yaw/pitch overlay).
+      const yaw = this.followFacing + this.mouseYaw;
+      const pitch = -0.05 + this.mousePitch * 0.5;
+      const tx = this.followTarget.x;
+      const tz = this.followTarget.z;
+      const cy = 0.65;
+      this.camera.position.set(
+        tx - Math.sin(yaw) * 0.05, // slightly forward of centre
+        cy,
+        tz - Math.cos(yaw) * 0.05,
+      );
+      const lookAhead = 8;
+      this.camera.lookAt(
+        tx - Math.sin(yaw) * lookAhead,
+        cy + Math.sin(pitch) * lookAhead,
+        tz - Math.cos(yaw) * lookAhead,
+      );
+    }
+  }
+
   applyMood(mood) {
     if (!mood) return;
     this.ambient.color.setHex(mood.ambient);
@@ -121,9 +190,52 @@ export class Engine {
     this.renderer.setClearColor?.(0x05050a, 1);
   }
 
-  setFollow(pos) {
+  setFollow(pos, facing) {
     if (!pos) return;
     this.followTarget.set(pos.x, 0, pos.z);
+    if (typeof facing === "number") this.followFacing = facing;
+  }
+
+  setCameraMode(mode) {
+    if (!["topdown", "third", "first"].includes(mode)) return;
+    this.cameraMode = mode;
+    // Reset accumulated mouse rotation so a switch feels predictable.
+    if (mode === "topdown") { this.mouseYaw = 0; this.mousePitch = 0; }
+  }
+
+  _wireMouseLook() {
+    const canvas = this.canvas;
+    let dragging = false;
+    let lastX = 0, lastY = 0;
+    canvas.addEventListener("pointerdown", (e) => {
+      // Only start drag if pointer is over the canvas itself (not a UI panel).
+      if (e.target !== canvas) return;
+      // In topdown, mouse drag isn't used for look; allow it but it's a
+      // no-op rotation.
+      dragging = true;
+      lastX = e.clientX; lastY = e.clientY;
+      canvas.setPointerCapture?.(e.pointerId);
+    });
+    canvas.addEventListener("pointerup", (e) => {
+      dragging = false;
+      try { canvas.releasePointerCapture?.(e.pointerId); } catch (_) {}
+    });
+    canvas.addEventListener("pointercancel", () => { dragging = false; });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      this.mouseYaw -= dx * 0.005;
+      this.mousePitch -= dy * 0.004;
+      // Clamp pitch so we don't roll over.
+      this.mousePitch = Math.max(-0.8, Math.min(0.8, this.mousePitch));
+    });
+    // Reset mouse offset on right-click.
+    canvas.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      this.mouseYaw = 0; this.mousePitch = 0;
+    });
   }
 
   onFrame(cb) { this.callbacks.push(cb); }
@@ -138,23 +250,7 @@ export class Engine {
       const dt = Math.min(0.05, (now - this.last) / 1000);
       this.last = now;
 
-      // Camera follow with soft clamping so we never frame open void.
-      let tx = this.followTarget.x;
-      let tz = this.followTarget.z;
-      if (this.levelBounds) {
-        const margin = 5;
-        tx = Math.max(this.levelBounds.min.x + margin,
-              Math.min(this.levelBounds.max.x - margin, tx));
-        tz = Math.max(this.levelBounds.min.z + margin,
-              Math.min(this.levelBounds.max.z - margin, tz));
-      }
-      const desired = new THREE.Vector3(
-        tx + this.cameraOffset.x,
-        this.cameraOffset.y,
-        tz + this.cameraOffset.z
-      );
-      this.camera.position.lerp(desired, 0.08);
-      this.camera.lookAt(tx, 0.5, tz);
+      this._updateCamera();
 
       for (const cb of this.callbacks) cb(dt, now / 1000);
 

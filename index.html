@@ -57,6 +57,12 @@
           <span class="hud__label">Time</span>
           <span id="hud-time" class="hud__value">00:00</span>
         </div>
+        <button id="hud-camera" class="hud__icon" type="button" title="Camera mode (V)" aria-label="Camera mode">
+          <span id="hud-camera-icon">▦</span>
+        </button>
+        <button id="hud-sound" class="hud__icon" type="button" title="Sound (M)" aria-label="Toggle sound">
+          <span id="hud-sound-icon">♪</span>
+        </button>
         <button id="hud-leave" class="hud__leave" type="button" title="Leave game (Esc)" aria-label="Leave game">✕</button>
       </div>
 
@@ -245,6 +251,9 @@
             <ul class="howto__list">
               <li><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> — drive</li>
               <li><kbd>Space</kbd> — fire your power-up</li>
+              <li><kbd>V</kbd> — switch camera (top-down → chase → first-person)</li>
+              <li><kbd>M</kbd> — mute / unmute</li>
+              <li>Mouse drag — orbit the camera (right-click resets)</li>
               <li><kbd>Esc</kbd> — pause / leave</li>
               <li>Touch — drag the joystick (mobile)</li>
             </ul>
@@ -255,6 +264,7 @@
               <li>Vacuum every speck of dirt to unlock the next door.</li>
               <li>Five rooms, one final dock. Beat them all.</li>
               <li>Pets patrol every room. Touching one stuns you for two seconds and costs points.</li>
+              <li>Mines and bombs you drop are dangerous to <em>everyone</em> — including you. Don't dawdle nearby.</li>
               <li>Co-op: shared score. Versus: every pilot for themselves.</li>
             </ul>
           </div>

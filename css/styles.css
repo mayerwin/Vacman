@@ -899,7 +899,7 @@ kbd {
   text-transform: uppercase;
 }
 
-.hud__leave {
+.hud__icon, .hud__leave {
   width: 38px;
   height: 38px;
   border-radius: 50%;
@@ -918,6 +918,8 @@ kbd {
   place-items: center;
   flex-shrink: 0;
 }
+.hud__icon:hover { color: var(--mint); border-color: var(--mint); transform: scale(1.05); }
+.hud__icon--active { color: var(--mint); border-color: var(--mint); background: rgba(0, 255, 198, 0.1); }
 .hud__leave:hover { color: var(--pink); border-color: var(--pink); transform: scale(1.05); }
 
 /* ---------- Toast ---------- */

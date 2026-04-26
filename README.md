@@ -39,11 +39,14 @@ Bring up to **eight pilots** along for the ride. Multiplayer runs over WebRTC pe
 
 ## Highlights
 
-- 🌀 **Round-vacuum hero** in four bona-fide brand looks: Roborock (LiDAR tower), Dreame (orange ring), iRobot (side brushes), Dyson (cyclone fan)
-- 🎨 **8-colour LED ring** so every pilot is instantly recognisable
+- 🌀 **Round-vacuum hero** modelled after the actual flagship of each brand: Roborock (matte black with the green LiDAR turret), Dreame (low pearl-white puck), iRobot (charcoal grey with three top buttons + camera bump), Dyson (navy + copper 360° camera dome)
+- 🎨 **8-colour LED underglow** so every pilot is instantly recognisable on the floor
+- 🎬 **Three camera modes** you can swap on the fly: top-down arcade, third-person chase, full first-person — plus mouse-drag orbit
+- 🔊 **Full Web Audio** — synthesized motor drone, suction blips, pet cries, mine beeps, explosions, victory jingle. No assets, no downloads.
 - 🐱🐶🐹🦜 **Four pet types**, each with its own AI: cats hunt smartly, dogs charge in straight lines, hamsters roll randomly, parrots fly straight over walls
-- ⚡ **Five power-ups**: Turbo, Auto-turret, Mine, Big bomb, Stealth
-- 🏠 **Six rooms**: Living Room → Kitchen → Bedroom → Bathroom → Garage → Charging Dock
+- ⚡ **Five power-ups** (each modelled to match its function): Turbo bolt, Auto-turret, Spiked mine, Cartoon bomb, Stealth ghost
+- 💥 **Mines and bombs are lethal to everyone** — including the pilot who dropped them — with smoke + spark + flash damage effects
+- 🏠 **Six rooms**: Living Room → Kitchen → Bedroom → Bathroom → Garage → Charging Dock, each with two-tier furniture, ceiling lamp + warm point light, and corner plants
 - 🤝 **Co-op**, ⚡ **Versus**, and 🏃 **Solo time-attack** modes
 - 📱 **Touch joystick** on mobile, full keyboard on desktop
 - 🌐 **No server required** — peer-to-peer multiplayer over WebRTC
@@ -55,6 +58,9 @@ Bring up to **eight pilots** along for the ride. Multiplayer runs over WebRTC pe
 |---|---|
 | Drive | <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> &nbsp; or &nbsp; <kbd>↑</kbd> <kbd>←</kbd> <kbd>↓</kbd> <kbd>→</kbd> &nbsp; or &nbsp; the on-screen joystick |
 | Use power-up | <kbd>Space</kbd> (or the action button on mobile) |
+| Camera mode | <kbd>V</kbd> — cycles top-down → 3rd-person chase → first-person |
+| Mouse drag | Orbit camera (right-click resets) |
+| Mute / unmute | <kbd>M</kbd> |
 | Pause / quit | <kbd>Esc</kbd> |
 | Title shortcuts | <kbd>1</kbd> Solo · <kbd>2</kbd> Host · <kbd>3</kbd> Join · <kbd>?</kbd> Help |
 
@@ -65,9 +71,9 @@ The job is simple: **vacuum every speck of dirt** to unlock the next door, then 
 | Icon | Name | What it does |
 |:---:|---|---|
 | ⚡ | **Turbo** | 1.5× speed for 5 seconds |
-| 🔫 | **Auto-turret** | Mounts a turret on top of your bot that auto-fires for 8 seconds |
-| 💣 | **Mine** | Drops behind you. Detonates on the first pet to walk over it |
-| 💥 | **Big bomb** | Drops behind you. Wide blast radius — careful where you stand |
+| 🔫 | **Auto-turret** | Auto-fires at the nearest pet for 8 seconds |
+| 💣 | **Mine** | Drops behind you. Triggers on the first pet — or pilot — to walk over it. After 1.6s it'll detonate on you too. |
+| 💥 | **Big bomb** | Same as a mine, but with a wide blast radius. Run. |
 | 🤫 | **Stealth** | Pets ignore you for 4 seconds |
 
 ### Modes
@@ -75,6 +81,16 @@ The job is simple: **vacuum every speck of dirt** to unlock the next door, then 
 - **Solo run** — single player, beat the clock through all six rooms
 - **Co-op** — up to 8 pilots on the same team, shared score, all rooms
 - **Versus** — same room, every pilot for themselves, highest score wins
+
+### Camera modes
+
+Press <kbd>V</kbd> in-game (or tap the camera icon in the HUD) to cycle:
+
+- **▦ Top-down** — the classic arcade view. Best for spatial awareness; A/D/W/S move in world directions.
+- **◗ Third-person chase** — the camera sits behind your bot. W is "forward where the bot looks", A/D strafes; mouse drag orbits.
+- **👁 First-person** — camera mounted on the bot's sensor. The most immersive view, but you have to trust the LiDAR. Mouse drag aims; A/D strafes.
+
+Drag with the mouse in any mode to peek around; right-click to recenter.
 
 ## Multiplayer
 
