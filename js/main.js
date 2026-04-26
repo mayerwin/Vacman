@@ -242,6 +242,8 @@ function startGame({ levelIndex = 0, players = null, asGuest = false } = {}) {
   });
   ui.setCameraLabel(engine.cameraMode);
   ui.setSoundLabel(sound.enabled);
+  // Apply current camera mode to the freshly-built world (toggles ceiling).
+  game.world?.setCameraMode?.(engine.cameraMode);
   ui.bindPause({
     onResume: () => { ui.hideAll(); ui.showHUD(); paused = false; },
     onLeave:  () => leaveGame(true),
@@ -262,7 +264,10 @@ function startGame({ levelIndex = 0, players = null, asGuest = false } = {}) {
 
   // Game events.
   game.on("score-changed", refreshHUD);
-  game.on("level-changed", refreshHUD);
+  game.on("level-changed", () => {
+    refreshHUD();
+    game.world?.setCameraMode?.(engine.cameraMode);
+  });
   game.on("level-cleared", ({ reachedBy, time }) => {
     sound.win();
     if (role !== "guest") {
@@ -375,6 +380,7 @@ function cycleCamera() {
   const next = CAMERA_CYCLE[(i + 1) % CAMERA_CYCLE.length];
   engine.setCameraMode(next);
   ui.setCameraLabel(next);
+  game?.world?.setCameraMode?.(next);
   try { localStorage.setItem("vacman:camera", next); } catch (_) {}
   ui.toast(`Camera: ${next}`, "good");
 }

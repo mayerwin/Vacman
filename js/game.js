@@ -374,53 +374,67 @@ export class Game {
     let vx = axis.x * speed;
     let vz = axis.y * speed;
     // In third-person / first-person, W/A/S/D are camera-relative: W is
-    // "where the camera looks", A/D strafe. Mouse rotates the camera, and
-    // the bot's facing snaps to follow the camera yaw.
+    // "where the camera looks", A/D strafes. Mouse rotates the bot's
+    // facing, which the camera then follows. Critically we DO NOT
+    // re-derive p.facing from movement direction below — that would fight
+    // the mouse-driven rotation and make the camera shake.
+    let cameraRelative = false;
     if (p.isLocal && this.engine.cameraMode !== "topdown") {
-      const yaw = (this.engine.cameraMode === "third"
-        ? p.facing + this.engine.mouseYaw
-        : p.facing + this.engine.mouseYaw);
-      const fwd = -axis.y;
-      const rht =  axis.x;
-      // Camera-forward in world XZ: when bot facing matches "forward camera"
-      // — for first-person camera looks in facing direction (sin, cos);
-      // for third-person camera is BEHIND so the look direction it shows
-      // equals the bot facing too.
-      const fx =  Math.sin(yaw);
-      const fz =  Math.cos(yaw);
-      const rx =  Math.cos(yaw);
-      const rz = -Math.sin(yaw);
-      vx = (fwd * fx + rht * rx) * speed;
-      vz = (fwd * fz + rht * rz) * speed;
-      // Snap bot facing to camera yaw so further mouse rotation keeps the
-      // input consistent.
-      p.facing = yaw;
+      cameraRelative = true;
+      // Bake the mouse drag into the bot facing once per frame; reset.
+      p.facing += this.engine.mouseYaw;
       this.engine.mouseYaw = 0;
+      const yaw = p.facing;
+      const fwd = -axis.y;            // W = forward
+      const rht =  axis.x;            // D = strafe right
+      // World-space velocity from camera basis. atan2(sin, cos) of the
+      // result equals the camera yaw when fwd=1 / rht=0, so movement is
+      // along the look axis.
+      vx = (fwd * Math.sin(yaw) + rht * Math.cos(yaw)) * speed;
+      vz = (fwd * Math.cos(yaw) - rht * Math.sin(yaw)) * speed;
     }
-    // Convert screen-space input (y is down) to world-space (z is depth into screen).
     const dx = vx * dt;
     const dz = vz * dt;
 
-    // Move along x then z so we can slide along walls.
-    if (dx !== 0) {
-      const nx = p.position.x + dx;
-      const cell = this.world.worldToCell(nx + Math.sign(dx) * VAC_RADIUS, p.position.z);
-      if (!this.world.isSolid(cell.c, cell.r)) p.position.x = nx;
-    }
-    if (dz !== 0) {
-      const nz = p.position.z + dz;
-      const cell = this.world.worldToCell(p.position.x, nz + Math.sign(dz) * VAC_RADIUS);
-      if (!this.world.isSolid(cell.c, cell.r)) p.position.z = nz;
-    }
+    // Move along x then z so we can slide along walls. Each axis: try the
+    // step; if a pushable is in the way, attempt to shove it; if a wall is
+    // in the way, just stop on that axis.
+    const tryAxis = (axis, delta) => {
+      if (delta === 0) return;
+      const sign = Math.sign(delta);
+      const probe = axis === "x"
+        ? { x: p.position.x + delta + sign * VAC_RADIUS, z: p.position.z }
+        : { x: p.position.x, z: p.position.z + delta + sign * VAC_RADIUS };
+      const cell = this.world.worldToCell(probe.x, probe.z);
+      if (this.world.isSolid(cell.c, cell.r)) return; // wall — blocked
+      const pushable = this.world.pushableAt(cell.c, cell.r);
+      if (pushable) {
+        const moved = this.world.tryPush(
+          pushable,
+          axis === "x" ? sign : 0,
+          axis === "z" ? sign : 0,
+        );
+        if (!moved) return;          // furniture jammed against wall
+      }
+      if (axis === "x") p.position.x += delta;
+      else              p.position.z += delta;
+    };
+    tryAxis("x", dx);
+    tryAxis("z", dz);
 
-    if (Math.hypot(vx, vz) > 0.01) {
+    // Topdown mode auto-rotates the bot toward its motion direction. In
+    // camera-relative modes (3rd / FP) we keep facing locked to the
+    // mouse-driven yaw so the player's input frame is stable.
+    if (!cameraRelative && Math.hypot(vx, vz) > 0.01) {
       p.facing = Math.atan2(vx, vz);
     }
-    // Smooth rotation.
+    // Smooth rotation. In FP/3rd modes use a much faster lerp so the bot
+    // (and the camera that follows it) doesn't lag behind the mouse.
     let dr = p.facing - p.rotation;
     while (dr > Math.PI) dr -= Math.PI * 2;
     while (dr < -Math.PI) dr += Math.PI * 2;
-    p.rotation += dr * Math.min(1, dt * 12);
+    const lerp = cameraRelative ? Math.min(1, dt * 28) : Math.min(1, dt * 12);
+    p.rotation += dr * lerp;
     p.mesh.position.set(p.position.x, 0, p.position.z);
     p.mesh.rotation.y = p.rotation;
   }

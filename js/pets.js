@@ -134,9 +134,11 @@ export class Pet {
   _isPassable(c, r) {
     if (this.kind === "parrot") {
       if (c < 0 || r < 0 || c >= this.world.cols || r >= this.world.rows) return false;
-      return true;
+      // Parrots fly so they ignore walls — but still avoid pushable
+      // furniture (they'd look weird clipping through a chair).
+      return !this.world.pushableAt(c, r);
     }
-    return !this.world.isSolid(c, r);
+    return !this.world.isBlockedForPet(c, r);
   }
 
   _pickDirection(players) {

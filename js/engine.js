@@ -143,37 +143,53 @@ export class Engine {
       this.camera.position.lerp(desired, 0.12);
       this.camera.lookAt(tx, 0.5, tz);
     } else if (mode === "third") {
-      // Chase camera behind and slightly above the bot. Player faces
-      // the direction of motion; mouse can offset yaw/pitch.
-      const yaw = this.followFacing + this.mouseYaw + Math.PI; // behind bot
-      const pitch = 0.18 - this.mousePitch * 0.4;
-      const dist = 3.6;
+      // Chase camera behind and slightly above the bot.
+      const yaw = this.followFacing + Math.PI; // behind bot
+      const pitch = 0.22 + this.mousePitch * 0.4;
+      const dist = 3.8;
       const tx = this.followTarget.x;
       const tz = this.followTarget.z;
-      const cy = 1.4 + Math.sin(pitch) * 1.4;
-      const cx = tx + Math.sin(yaw) * dist * Math.cos(pitch);
-      const cz = tz + Math.cos(yaw) * dist * Math.cos(pitch);
-      const desired = new THREE.Vector3(cx, cy, cz);
-      this.camera.position.lerp(desired, 0.22);
-      this.camera.lookAt(tx, 0.7, tz);
+      let cx = tx + Math.sin(yaw) * dist * Math.cos(pitch);
+      let cz = tz + Math.cos(yaw) * dist * Math.cos(pitch);
+      let cy = 1.5 + Math.sin(pitch) * 1.6;
+      // Keep the camera inside the playable area. When the desired
+      // position would clip beyond the wall, raise the camera up
+      // proportionally so we tilt into a top-down view instead of
+      // squishing the bot at the screen.
+      if (this.levelBounds) {
+        const m = 1.2;
+        const cxClamped = Math.max(this.levelBounds.min.x + m,
+          Math.min(this.levelBounds.max.x - m, cx));
+        const czClamped = Math.max(this.levelBounds.min.z + m,
+          Math.min(this.levelBounds.max.z - m, cz));
+        const xPenalty = Math.abs(cxClamped - cx);
+        const zPenalty = Math.abs(czClamped - cz);
+        const penalty = Math.hypot(xPenalty, zPenalty);
+        cx = cxClamped;
+        cz = czClamped;
+        cy += penalty * 0.6;
+      }
+      this.camera.position.set(cx, cy, cz);
+      this.camera.lookAt(tx, 0.85, tz);
     } else if (mode === "first") {
-      // First-person: camera at the sensor on top of the bot, looking in
-      // the bot's facing direction (with mouse yaw/pitch overlay).
-      const yaw = this.followFacing + this.mouseYaw;
+      // First-person: camera at the sensor on top of the bot, looking
+      // along the bot's facing. Movement comes from p.facing (driven by
+      // mouse), no extra mouseYaw needed here.
+      const yaw = this.followFacing;
       const pitch = -0.05 + this.mousePitch * 0.5;
       const tx = this.followTarget.x;
       const tz = this.followTarget.z;
-      const cy = 0.65;
-      this.camera.position.set(
-        tx - Math.sin(yaw) * 0.05, // slightly forward of centre
-        cy,
-        tz - Math.cos(yaw) * 0.05,
-      );
+      const cy = 0.55;
+      // Forward unit vector in world XZ for facing yaw:
+      //   atan2(vx, vz) = facing  →  forward = (sin(facing), cos(facing))
+      const fx = Math.sin(yaw);
+      const fz = Math.cos(yaw);
+      this.camera.position.set(tx + fx * 0.12, cy, tz + fz * 0.12);
       const lookAhead = 8;
       this.camera.lookAt(
-        tx - Math.sin(yaw) * lookAhead,
+        tx + fx * lookAhead,
         cy + Math.sin(pitch) * lookAhead,
-        tz - Math.cos(yaw) * lookAhead,
+        tz + fz * lookAhead,
       );
     }
   }

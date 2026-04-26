@@ -46,7 +46,9 @@ Bring up to **eight pilots** along for the ride. Multiplayer runs over WebRTC pe
 - 🐱🐶🐹🦜 **Four pet types**, each with its own AI: cats hunt smartly, dogs charge in straight lines, hamsters roll randomly, parrots fly straight over walls
 - ⚡ **Five power-ups** (each modelled to match its function): Turbo bolt, Auto-turret, Spiked mine, Cartoon bomb, Stealth ghost
 - 💥 **Mines and bombs are lethal to everyone** — including the pilot who dropped them — with smoke + spark + flash damage effects
-- 🏠 **Six rooms**: Living Room → Kitchen → Bedroom → Bathroom → Garage → Charging Dock, each with two-tier furniture, ceiling lamp + warm point light, and corner plants
+- 🏠 **Six rooms**: Living Room → Kitchen → Bedroom → Bathroom → Garage → Charging Dock — each populated with real-shape furniture (sofa, kitchen island, bed, bathtub, workbench), wall art (TVs, paintings, clocks, mirrors, pegboards), corner plants, and a warm pendant lamp
+- 🪑 **Pushable furniture** — drive into a stool / waste-bin / hamper / jerrycan and shove it across the room (the vacuum has more mass than you'd think)
+- 🧹 **Three dirt flavours** — fluffy dust bunnies, flat crumbs, coiled hairballs
 - 🤝 **Co-op**, ⚡ **Versus**, and 🏃 **Solo time-attack** modes
 - 📱 **Touch joystick** on mobile, full keyboard on desktop
 - 🌐 **No server required** — peer-to-peer multiplayer over WebRTC
