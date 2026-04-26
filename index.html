@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a14" />
+    <meta name="description" content="Vacman — a 3D multiplayer vacuum-cleaner Pac-Man for the browser." />
+    <meta property="og:title" content="Vacman" />
+    <meta property="og:description" content="Suck up dirt. Outrun the pets. Race your friends home to the dock." />
+    <meta property="og:type" content="website" />
+
+    <title>Vacman — 3D vacuum arcade</title>
+
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="css/styles.css" />
+
+    <!-- Three.js + PeerJS via CDN. Importmap so we can use ES module syntax. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  </head>
+  <body>
+    <!-- ===== Background atmosphere ===== -->
+    <div class="bg-grain" aria-hidden="true"></div>
+    <div class="bg-glow bg-glow--mint" aria-hidden="true"></div>
+    <div class="bg-glow bg-glow--pink" aria-hidden="true"></div>
+
+    <!-- ===== 3D canvas (game) ===== -->
+    <canvas id="game-canvas" aria-label="Vacman 3D game"></canvas>
+
+    <!-- ===== HUD (in-game overlay) ===== -->
+    <div id="hud" class="hud" hidden>
+      <div class="hud__row hud__row--top">
+        <div class="hud__chip hud__chip--room">
+          <span class="hud__label">Room</span>
+          <span id="hud-room" class="hud__value">Living Room</span>
+        </div>
+        <div class="hud__progress">
+          <div class="hud__progress-bar"><div id="hud-progress-fill" class="hud__progress-fill"></div></div>
+          <span id="hud-progress-text" class="hud__progress-text">0%</span>
+        </div>
+        <div class="hud__chip hud__chip--time">
+          <span class="hud__label">Time</span>
+          <span id="hud-time" class="hud__value">00:00</span>
+        </div>
+        <button id="hud-leave" class="hud__leave" type="button" title="Leave game (Esc)" aria-label="Leave game">✕</button>
+      </div>
+
+      <div class="hud__players" id="hud-players"></div>
+
+      <div class="hud__row hud__row--bottom">
+        <div class="hud__powerup" id="hud-powerup">
+          <div class="hud__powerup-icon" id="hud-powerup-icon">·</div>
+          <div class="hud__powerup-meta">
+            <span class="hud__powerup-name" id="hud-powerup-name">No power-up</span>
+            <span class="hud__powerup-hint">Press <kbd>Space</kbd> to use</span>
+          </div>
+        </div>
+        <div class="hud__hint" id="hud-hint">WASD or arrows to drive</div>
+      </div>
+
+    </div>
+
+    <!-- ===== Toast / notification ===== -->
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <!-- ===== UI shell (menus) ===== -->
+    <div id="ui-root" class="ui">
+      <!-- Title screen -->
+      <section class="screen screen--title" data-screen="title">
+        <div class="title">
+          <div class="title__eyebrow">A 3D vacuum arcade</div>
+          <h1 class="title__logo">
+            <span class="title__logo-vac">VAC</span><span class="title__logo-man">MAN</span>
+          </h1>
+          <p class="title__tagline">
+            Suck up the dirt. Dodge the pets. Race home to the dock before the battery dies.
+          </p>
+
+          <div class="title__menu">
+            <button class="btn btn--primary" data-action="solo">
+              <span class="btn__kbd">1</span><span>Solo run</span>
+              <span class="btn__hint">Beat the clock</span>
+            </button>
+            <button class="btn" data-action="host">
+              <span class="btn__kbd">2</span><span>Host game</span>
+              <span class="btn__hint">Up to 8 players</span>
+            </button>
+            <button class="btn" data-action="join">
+              <span class="btn__kbd">3</span><span>Join game</span>
+              <span class="btn__hint">Got a code?</span>
+            </button>
+            <button class="btn btn--ghost" data-action="howto">
+              <span class="btn__kbd">?</span><span>How to play</span>
+            </button>
+          </div>
+
+          <div class="title__credits">
+            <span>Built with Three.js · PeerJS · ❤</span>
+            <a href="https://github.com/mayerwin/Vacman" target="_blank" rel="noopener">GitHub</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Garage / vacuum customization screen -->
+      <section class="screen screen--garage" data-screen="garage" hidden>
+        <header class="screen__header">
+          <button class="iconbtn" data-action="back-title" aria-label="Back">←</button>
+          <h2>The Garage</h2>
+          <span class="screen__sub">Pick your weapon of choice.</span>
+        </header>
+
+        <div class="garage">
+          <div class="garage__preview">
+            <canvas id="garage-canvas" aria-label="Vacuum preview"></canvas>
+            <div class="garage__brand-badge" id="garage-badge">Roborock</div>
+          </div>
+
+          <div class="garage__controls">
+            <div class="field">
+              <label class="field__label">Pilot name</label>
+              <input
+                id="garage-name"
+                class="input"
+                type="text"
+                maxlength="14"
+                placeholder="Type your handle"
+                autocomplete="off"
+              />
+            </div>
+
+            <div class="field">
+              <label class="field__label">Brand</label>
+              <div class="brand-row" id="garage-brands">
+                <button class="brand" data-brand="roborock"><span>Roborock</span></button>
+                <button class="brand" data-brand="dreame"><span>Dreame</span></button>
+                <button class="brand" data-brand="irobot"><span>iRobot</span></button>
+                <button class="brand" data-brand="dyson"><span>Dyson</span></button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field__label">LED ring colour</label>
+              <div class="color-row" id="garage-colors"></div>
+            </div>
+
+            <button class="btn btn--primary btn--full" data-action="confirm-garage">
+              Looks good — let's go
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Mode selection screen -->
+      <section class="screen screen--mode" data-screen="mode" hidden>
+        <header class="screen__header">
+          <button class="iconbtn" data-action="back-garage" aria-label="Back">←</button>
+          <h2 id="mode-title">Choose your mode</h2>
+        </header>
+
+        <div class="mode-grid">
+          <button class="mode-card" data-mode="coop">
+            <div class="mode-card__icon">🤝</div>
+            <div class="mode-card__name">Co-op</div>
+            <div class="mode-card__desc">Team up. Clear every room. Survive together.</div>
+          </button>
+          <button class="mode-card" data-mode="versus">
+            <div class="mode-card__icon">⚡</div>
+            <div class="mode-card__name">Versus</div>
+            <div class="mode-card__desc">Same room, every vacuum for itself. Highest score wins.</div>
+          </button>
+        </div>
+      </section>
+
+      <!-- Lobby (host or guest) -->
+      <section class="screen screen--lobby" data-screen="lobby" hidden>
+        <header class="screen__header">
+          <button class="iconbtn" data-action="back-mode" aria-label="Back">←</button>
+          <h2 id="lobby-title">Lobby</h2>
+        </header>
+
+        <div class="lobby">
+          <div class="lobby__code-block" id="lobby-code-block">
+            <span class="lobby__code-label">Room code</span>
+            <span class="lobby__code" id="lobby-code">····</span>
+            <button class="btn btn--ghost btn--small" id="lobby-copy">Copy invite link</button>
+            <p class="lobby__share-hint">Share this with friends — works over LAN or the wider internet.</p>
+          </div>
+
+          <div class="lobby__join-block" id="lobby-join-block" hidden>
+            <label class="field__label">Enter the room code your host gave you</label>
+            <div class="lobby__join-row">
+              <input
+                id="lobby-join-input"
+                class="input input--code"
+                type="text"
+                maxlength="4"
+                placeholder="ABCD"
+                autocomplete="off"
+                autocapitalize="characters"
+              />
+              <button class="btn btn--primary" id="lobby-join-btn">Connect</button>
+            </div>
+            <p class="lobby__share-hint" id="lobby-join-status"></p>
+          </div>
+
+          <div class="lobby__players">
+            <div class="lobby__players-header">
+              <span>Pilots in the lobby</span>
+              <span id="lobby-count">1/8</span>
+            </div>
+            <ul id="lobby-players" class="lobby__players-list"></ul>
+          </div>
+
+          <div class="lobby__actions">
+            <button id="lobby-start" class="btn btn--primary btn--full" hidden>Start game</button>
+            <p id="lobby-waiting" class="lobby__waiting">Waiting for the host to start…</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- How-to overlay -->
+      <section class="screen screen--howto" data-screen="howto" hidden>
+        <header class="screen__header">
+          <button class="iconbtn" data-action="back-title" aria-label="Back">←</button>
+          <h2>How to play</h2>
+        </header>
+        <div class="howto">
+          <div class="howto__col">
+            <h3>Controls</h3>
+            <ul class="howto__list">
+              <li><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> — drive</li>
+              <li><kbd>Space</kbd> — fire your power-up</li>
+              <li><kbd>Esc</kbd> — pause / leave</li>
+              <li>Touch — drag the joystick (mobile)</li>
+            </ul>
+          </div>
+          <div class="howto__col">
+            <h3>The job</h3>
+            <ul class="howto__list">
+              <li>Vacuum every speck of dirt to unlock the next door.</li>
+              <li>Five rooms, one final dock. Beat them all.</li>
+              <li>Pets patrol every room. Touching one stuns you for two seconds and costs points.</li>
+              <li>Co-op: shared score. Versus: every pilot for themselves.</li>
+            </ul>
+          </div>
+          <div class="howto__col">
+            <h3>Power-ups</h3>
+            <ul class="howto__list howto__list--icons">
+              <li><span class="powerchip powerchip--speed">⚡</span> Turbo — 1.5× speed for 5s</li>
+              <li><span class="powerchip powerchip--turret">🔫</span> Turret — auto-fires for 8s</li>
+              <li><span class="powerchip powerchip--mine">💣</span> Mine — drops behind, blasts pets</li>
+              <li><span class="powerchip powerchip--bomb">💥</span> Big bomb — wide blast radius</li>
+              <li><span class="powerchip powerchip--stealth">🤫</span> Stealth — pets ignore you for 4s</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Pause overlay -->
+      <section class="screen screen--pause" data-screen="pause" hidden>
+        <div class="pause">
+          <h2>Paused</h2>
+          <button class="btn btn--primary btn--full" data-action="resume">Resume</button>
+          <button class="btn btn--full" data-action="leave-game">Leave game</button>
+        </div>
+      </section>
+
+      <!-- Round results -->
+      <section class="screen screen--results" data-screen="results" hidden>
+        <div class="results">
+          <h2 id="results-title">Room cleared!</h2>
+          <p id="results-sub" class="results__sub"></p>
+          <div class="results__board" id="results-board"></div>
+          <div class="results__buttons">
+            <button class="btn btn--primary btn--full" id="results-next">Next room →</button>
+            <button class="btn btn--full" data-action="leave-game">Back to title</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===== Mobile joystick (only shown on touch) ===== -->
+    <div id="touch-controls" class="touch" hidden>
+      <div class="touch__stick" id="touch-stick">
+        <div class="touch__nub" id="touch-nub"></div>
+      </div>
+      <button class="touch__action" id="touch-action" type="button" aria-label="Use power-up">▲</button>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
